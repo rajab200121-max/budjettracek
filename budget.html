@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Budget Tracker Premium Permanent</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+    body { background-color: #3193d9ff; padding: 20px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 450px; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    
+    h2 { text-align: center; margin-bottom: 20px; color: #333; }
+    
+    /* Tampilan Saldo */
+    .saldo-box { background: #2ecc71; color: white; padding: 15px; border-radius: 10px; text-align: center; margin-bottom: 15px; }
+    .saldo-box.sering-jajan { background: #e74c3c; } 
+    .saldo-box h3 { font-size: 28px; margin-top: 5px; }
+
+    /* Kotak Detail Kiri-Kanan */
+    .detail-box { display: flex; gap: 10px; margin-bottom: 20px; }
+    .sub-box { flex: 1; padding: 10px; border-radius: 8px; color: white; text-align: center; }
+    .sub-box p { font-size: 12px; opacity: 0.9; }
+    .sub-box h5 { font-size: 16px; margin-top: 3px; }
+    .sub-box.plus { background-color: #2ecc71; }   
+    .sub-box.minus { background-color: #e74c3c; }  
+
+    /* Kotak Khusus Grafik */
+    .chart-container { width: 100%; max-width: 210px; margin: 0 auto 25px auto; }
+
+    /* Form Input */
+    .form-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+    input, select, button { padding: 12px; border-radius: 8px; border: 1px solid #ddd; font-size: 15px; outline: none; }
+    input:focus, select:focus { border-color: #2ecc71; }
+    
+    button { background: #3498db; color: white; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    button:hover { opacity: 0.9; }
+
+    /* Daftar Riwayat */
+    h4 { margin-bottom: 10px; color: #555; }
+    .list-transaksi { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .item-transaksi { display: flex; justify-content: space-between; padding: 12px; border-radius: 8px; background: #f9f9f9; border-left: 5px solid #2ecc71; }
+    .item-transaksi.pengeluaran { border-left-color: #e74c3c; }
+    
+    .hapus-btn { background: none; border: none; color: #aaa; cursor: pointer; font-weight: bold; }
+    .hapus-btn:hover { color: #e74c3c; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>Budget Tracker 💰</h2>
+  
+  <div class="saldo-box" id="saldoBox">
+    <p>Sisa Saldo Anda</p>
+    <h3 id="totalSaldo">Rp 0</h3>
+  </div>
+
+  <div class="detail-box">
+    <div class="sub-box plus">
+      <p>Total Masuk</p>
+      <h5 id="totalMasuk">Rp 0</h5>
+    </div>
+    <div class="sub-box minus">
+      <p>Total Keluar</p>
+      <h5 id="totalKeluar">Rp 0</h5>
+    </div>
+  </div>
+
+  <div class="chart-container">
+    <canvas id="grafikKeuangan"></canvas>
+  </div>
+
+  <div class="form-group">
+    <input type="text" id="namaTransaksi" placeholder="Contoh: Gaji, Beli Kopi..." />
+    <input type="number" id="jumlahUang" placeholder="Jumlah Uang (Rp)..." />
+    <select id="jenisTransaksi">
+      <option value="pemasukan">Pemasukan (+)</option>
+      <option value="pengeluaran">Pengeluaran (-)</option>
+    </select>
+    <button onclick="tambahTransaksi()">Catat Transaksi</button>
+  </div>
+
+  <h4>Riwayat Keuangan</h4>
+  <ul class="list-transaksi" id="riwayatList">
+     </ul>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  // 💾 LALUAN BARU: Mengambil data lama dari localStorage jika ada, kalau kosong buat array baru []
+  let dataKeuangan = JSON.parse(localStorage.getItem('dataKeuanganLocal')) || [];
+  let dompetChart; 
+
+  // Inisialisasi Grafik
+  function buatGrafikAwal() {
+    const ctx = document.getElementById('grafikKeuangan').getContext('2d');
+    dompetChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Total Masuk', 'Total Keluar'],
+        datasets: [{
+          data: [0, 0], 
+          backgroundColor: ['#2ecc71', '#e74c3c'], 
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
+      }
+    });
+  }
+
+  // Jalankan Grafik Pertama Kali
+  buatGrafikAwal();
+  
+  // 💾 JALANKAN DI AWAL: Langsung render data lama dari localStorage begitu web dibuka
+  hitungDanRender();
+
+  // Fungsi Tambah Data
+  function tambahTransaksi() {
+    const nama = document.getElementById('namaTransaksi').value.trim();
+    const jumlah = parseFloat(document.getElementById('jumlahUang').value);
+    const jenis = document.getElementById('jenisTransaksi').value;
+
+    if (!nama || isNaN(jumlah) || jumlah <= 0) {
+      alert("Mohon isi nama transaksi dan jumlah uang dengan benar! 😉");
+      return;
+    }
+
+    const transaksiBaru = {
+      id: Date.now(),
+      nama: nama,
+      jumlah: jumlah,
+      jenis: jenis,
+      tanggal: new Date().toLocaleDateString('id-ID', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    };
+
+    dataKeuangan.push(transaksiBaru);
+    
+    // 💾 SIMPAN KE MEMORI HP/LAPTOP
+    localStorage.setItem('dataKeuanganLocal', JSON.stringify(dataKeuangan));
+    
+    document.getElementById('namaTransaksi').value = '';
+    document.getElementById('jumlahUang').value = '';
+
+    hitungDanRender();
+  }
+
+  // Fungsi Hapus Data
+  function hapusTransaksi(id) {
+    dataKeuangan = dataKeuangan.filter(t => t.id !== id);
+    
+    // 💾 UPDATE MEMORI HP/LAPTOP SETELAH DIHAPUS
+    localStorage.setItem('dataKeuanganLocal', JSON.stringify(dataKeuangan));
+    
+    hitungDanRender();
+  }
+
+  // Fungsi Utama Hitung & Menggambar Layar
+  function hitungDanRender() {
+    let saldo = 0;
+    let totalPemasukan = 0;  
+    let totalPengeluaran = 0; 
+    
+    const listElement = document.getElementById('riwayatList');
+    listElement.innerHTML = ''; 
+
+    dataKeuangan.forEach(t => {
+      if (t.jenis === 'pemasukan') {
+        saldo += t.jumlah;
+        totalPemasukan += t.jumlah; 
+      } else {
+        saldo -= t.jumlah;
+        totalPengeluaran += t.jumlah; 
+      }
+
+      const formatUang = t.jumlah.toLocaleString('id-ID');
+      const simbol = t.jenis === 'pemasukan' ? '+' : '-';
+      const kelasCSS = t.jenis === 'pemasukan' ? 'pemasukan' : 'pengeluaran';
+
+      listElement.innerHTML += `
+        <li class="item-transaksi ${kelasCSS}">
+          <div>
+            <strong>${t.nama}</strong> <br>
+            <small style="color: #666; font-size: 11px;">📅 ${t.tanggal}</small> <br>
+            <small style="color: #888; font-weight: bold;">${simbol} Rp ${formatUang}</small>
+          </div>
+          <button class="hapus-btn" onclick="hapusTransaksi(${t.id})">❌</button>
+        </li>
+      `;
+    });
+
+    document.getElementById('totalSaldo').textContent = 'Rp ' + saldo.toLocaleString('id-ID');
+    document.getElementById('totalMasuk').textContent = 'Rp ' + totalPemasukan.toLocaleString('id-ID');
+    document.getElementById('totalKeluar').textContent = 'Rp ' + totalPengeluaran.toLocaleString('id-ID');
+
+    // Update Angka Grafik
+    dompetChart.data.datasets[0].data = [totalPemasukan, totalPengeluaran];
+    dompetChart.update(); 
+
+    // Ubah warna box jika minus
+    const saldoBox = document.getElementById('saldoBox');
+    if (saldo < 0) {
+      saldoBox.classList.add('sering-jajan');
+    } else {
+      saldoBox.classList.remove('sering-jajan');
+    }
+  }
+</script>
+
+</body>
+</html>
